@@ -31,4 +31,5 @@ function closeLightbox(){
 }
 document.addEventListener('keydown', function(e){ if(e.key === 'Escape') closeLightbox(); });
 var backToTopBtn=document.getElementById('backToTop');window.addEventListener('scroll',function(){if(window.scrollY>400){backToTopBtn.classList.add('visible');}else{backToTopBtn.classList.remove('visible');}});backToTopBtn.addEventListener('click',function(){window.scrollTo({top:0,behavior:'smooth'});});document.querySelector('.nav-logo').addEventListener('click',function(e){e.preventDefault();window.scrollTo({top:0,behavior:'smooth'});});</script>
+<script src="/aura-cursor.js" defer></script>
 </body></html>

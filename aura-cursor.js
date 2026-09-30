@@ -29,24 +29,25 @@
   var Z_INDEX = 9998;
   var OPACITY = 0.55;
 
-  // Desktop look (same as leepai.io).
+  // Desktop look: soft, colorful "smokey cursor" (longer, swirlier trails).
   var DESKTOP_CONFIG = {
     IMMEDIATE: false,
     SIM_RESOLUTION: 128,
     DYE_RESOLUTION: 1440,
     CAPTURE_RESOLUTION: 512,
-    DENSITY_DISSIPATION: 5,
-    VELOCITY_DISSIPATION: 3,
+    DENSITY_DISSIPATION: 3.5,
+    VELOCITY_DISSIPATION: 2,
     PRESSURE: 0.1,
     PRESSURE_ITERATIONS: 20,
-    CURL: 0,
+    CURL: 3,
     SPLAT_RADIUS: 0.2,
-    SPLAT_FORCE: 2000,
-    SHADING: false,
+    SPLAT_FORCE: 6000,
+    SHADING: true,
     TRANSPARENT: true,
     COLORFUL: true,
-    COLOR_UPDATE_SPEED: 2,
+    COLOR_UPDATE_SPEED: 10,
     SUNRAYS: false,
+    BLOOM: false,
     BLOOM_INTENSITY: 0.35,
     BLOOM_THRESHOLD: 0.85
   };
@@ -55,6 +56,12 @@
   var MOBILE_CONFIG = {};
   var k;
   for (k in DESKTOP_CONFIG) MOBILE_CONFIG[k] = DESKTOP_CONFIG[k];
+  MOBILE_CONFIG.VELOCITY_DISSIPATION = 3;
+  MOBILE_CONFIG.CURL = 0;
+  MOBILE_CONFIG.SPLAT_FORCE = 2000;
+  MOBILE_CONFIG.SHADING = false;
+  MOBILE_CONFIG.COLOR_UPDATE_SPEED = 2;
+  MOBILE_CONFIG.BLOOM = true;
   MOBILE_CONFIG.SIM_RESOLUTION = 64;
   MOBILE_CONFIG.DYE_RESOLUTION = 512;
   MOBILE_CONFIG.DENSITY_DISSIPATION = 4;
@@ -71,6 +78,10 @@
   var libReady = false;
   var wantStart = false;
   var started = false;
+  var touching = false;
+  var lastX = 0;
+  var lastY = 0;
+  var lastBuild = 0;
 
   function getFluid() {
     var f = window.WebGLFluid;
@@ -116,6 +127,7 @@
   function begin() {
     var fluid = getFluid();
     if (!fluid) return;
+    lastBuild = Date.now();
     mount();
 
     var realAdd = EventTarget.prototype.addEventListener;
@@ -138,6 +150,23 @@
     } finally {
       EventTarget.prototype.addEventListener = realAdd;
     }
+  }
+
+  // iPhone Safari can silently drop the GPU drawing surface after a lot of
+  // scrolling. If the browser says it is gone, build a fresh one. This only
+  // runs on a real, browser-reported loss, never on scroll or resize alone.
+  function contextLost() {
+    try {
+      if (!canvas) return false;
+      var gl = canvas.getContext("webgl2") || canvas.getContext("webgl");
+      return !!(gl && gl.isContextLost && gl.isContextLost());
+    } catch (err) {
+      return false;
+    }
+  }
+
+  function recoverIfLost() {
+    if (started && Date.now() - lastBuild > 2000 && contextLost()) begin();
   }
 
   function tryStart() {
@@ -163,12 +192,36 @@
     return function (e) {
       wantStart = true;
       tryStart();
+      recoverIfLost();
       var t = e.touches && e.touches[0];
-      if (t) send(type, t.clientX, t.clientY);
+      if (t) {
+        touching = true;
+        lastX = t.clientX;
+        lastY = t.clientY;
+        send(type, lastX, lastY);
+      }
     };
   }
   window.addEventListener("touchstart", onTouch("mousedown"), { passive: true });
   window.addEventListener("touchmove", onTouch("mousemove"), { passive: true });
+  function onTouchEnd() { touching = false; }
+  window.addEventListener("touchend", onTouchEnd, { passive: true });
+  window.addEventListener("touchcancel", onTouchEnd, { passive: true });
+
+  // Safari may pause touch-move events once a page scroll takes over. While a
+  // finger is down, keep a gentle glow going under it as the page scrolls.
+  if (isTouch) {
+    var flip = 1;
+    window.addEventListener("scroll", function () {
+      if (!touching) return;
+      flip = -flip;
+      send("mousemove", lastX, lastY + flip * 6);
+    }, { passive: true });
+    document.addEventListener("visibilitychange", function () {
+      if (!document.hidden) recoverIfLost();
+    });
+    window.addEventListener("pageshow", recoverIfLost);
+  }
 
   function loadLibrary(done) {
     if (getFluid()) { done(); return; }

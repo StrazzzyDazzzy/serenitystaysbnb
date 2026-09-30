@@ -180,7 +180,13 @@
   function send(type, x, y) {
     if (!canvas) return;
     try {
-      canvas.dispatchEvent(new MouseEvent(type, { clientX: x, clientY: y, bubbles: false }));
+      var ev = new MouseEvent(type, { clientX: x, clientY: y, bubbles: false });
+      // Safari miscounts offsets on fixed elements after scrolling, so set them directly.
+      try {
+        Object.defineProperty(ev, "offsetX", { value: x });
+        Object.defineProperty(ev, "offsetY", { value: y });
+      } catch (e2) {}
+      canvas.dispatchEvent(ev);
     } catch (err) {}
   }
 
